@@ -49,7 +49,10 @@
   <section id="masuk" class="kartu">
     <label class="kecil" for="emailIn">Email yang kamu pakai saat membeli</label>
     <input id="emailIn" type="email" autocomplete="email" placeholder="nama@email.com">
-    <button id="kirim">Kirim link masuk</button>
+    <label class="kecil" for="orderIn" style="display:block;margin-top:12px">Nomor pesanan (ada di email dari toko, contoh FO26ABC123)</label>
+    <input id="orderIn" type="text" autocapitalize="characters" autocomplete="off" placeholder="FO26…">
+    <button id="kirim">Masuk</button>
+    <p class="kecil">Cukup sekali di HP ini. Sesudahnya kamu tetap masuk.</p>
     <p id="msg" class="msg"></p>
   </section>
 
@@ -144,16 +147,28 @@ async function tampil() {
 
 $("kirim").onclick = async () => {
   const email = $("emailIn").value.trim().toLowerCase();
+  const order = $("orderIn").value.trim();
   if (!/^\S+@\S+\.\S+$/.test(email)) { $("msg").textContent = "Tulis email yang dipakai saat membeli."; return; }
-  $("kirim").disabled = true;
-  const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: false, emailRedirectTo: location.href.split("#")[0] } });
-  $("kirim").disabled = false;
-  const sering = error && (error.status === 429 || /rate|seconds|security purposes/i.test(error.message || ""));
-  $("msg").textContent = !error
-    ? "Link masuk sudah dikirim. Cek email kamu (juga folder Spam/Promosi)."
-    : sering
-      ? "Link masuk baru saja dikirim. Cek email kamu dulu (juga Spam/Promosi). Kalau belum ada, minta lagi beberapa menit lagi."
-      : "Email ini belum terdaftar sebagai pembeli. Pakai email yang sama seperti saat membeli.";
+  if (order.length < 4) { $("msg").textContent = "Tulis nomor pesanan dari email toko."; return; }
+  $("kirim").disabled = true; $("msg").textContent = "Memeriksa…";
+  try {
+    const r = await fetch(SB_URL + "/functions/v1/masuk", {
+      method: "POST", headers: { "Content-Type": "application/json", "apikey": SB_KEY },
+      body: JSON.stringify({ email, order }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      $("msg").textContent =
+        r.status === 429 ? "Terlalu banyak percobaan. Coba lagi 15 menit lagi." :
+        j.error === "belum_lunas" ? "Pesanan ini belum lunas. Selesaikan pembayaran dulu ya." :
+        "Email atau nomor pesanan tidak cocok. Cek lagi di email dari toko.";
+      return;
+    }
+    const { error } = await sb.auth.verifyOtp({ token_hash: j.token_hash, type: "magiclink" });
+    $("msg").textContent = error ? "Belum bisa masuk. Coba lagi sebentar." : "";
+  } catch (_) {
+    $("msg").textContent = "Koneksi bermasalah. Coba lagi sebentar.";
+  } finally { $("kirim").disabled = false; }
 };
 
 $("keluar").onclick = async (ev) => { ev.preventDefault(); if (conv) await conv.endSession(); await sb.auth.signOut(); };
