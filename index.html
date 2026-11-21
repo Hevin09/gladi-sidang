@@ -37,7 +37,23 @@
   .rapor p { margin: 0; font-size: 14px; line-height: 1.55; white-space: pre-line; }
   .aksi { display: flex; gap: 8px; }
   .aksi button { height: 38px; font-size: 14px; margin-top: 12px; }
-  @media print { body * { visibility: hidden; } .cetak, .cetak * { visibility: visible; } .cetak { position: absolute; left: 0; top: 0; width: 100%; border: 0; } .cetak .aksi { display: none; } }
+  .rapor ul { margin: 0; padding-left: 18px; }
+  .rapor li { font-size: 14px; line-height: 1.55; margin: 0 0 6px; }
+  .rapor li b { font-weight: 600; }
+  #cetakArea { display: none; }
+  @page { size: A4 portrait; margin: 18mm 16mm; }
+  @media print {
+    body { background: #fff; }
+    body > *:not(#cetakArea) { display: none !important; }
+    #cetakArea { display: block; color: #1d1d1b; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+    #cetakArea .kop { border-bottom: 2px solid var(--aksen); padding-bottom: 8px; margin-bottom: 14px; }
+    #cetakArea .kop h1 { font-size: 18pt; margin: 0; color: var(--aksen); }
+    #cetakArea .kop p { font-size: 10pt; margin: 4px 0 0; color: #5f5e5a; }
+    #cetakArea h2 { font-size: 12.5pt; margin: 16px 0 6px; color: var(--aksen); break-after: avoid; page-break-after: avoid; }
+    #cetakArea ul { margin: 0; padding-left: 16px; }
+    #cetakArea li { font-size: 11pt; line-height: 1.5; margin: 0 0 6px; break-inside: avoid; page-break-inside: avoid; }
+    #cetakArea .kaki { margin-top: 18px; font-size: 9pt; color: #5f5e5a; border-top: 1px solid #e3e2dc; padding-top: 6px; }
+  }
 </style>
 </head>
 <body>
@@ -85,6 +101,7 @@
   <p class="kecil">Pasang di layar HP: Android (Chrome) ketuk ⋮ lalu "Tambahkan ke layar utama"; iPhone (Safari) ketuk tombol Bagikan lalu "Tambah ke Layar Utama".</p>
   <p class="kecil">Butuh bantuan? <a href="https://wa.me/6281347470568" target="_blank" rel="noopener">Chat WhatsApp</a></p>
 </main>
+<div id="cetakArea"></div>
 
 <script type="module">
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -240,6 +257,26 @@ function teksRapor(r) {
   if (!bagian.length && r.ringkasan) bagian.push(r.ringkasan);
   return "Rapor latihan · " + tglRapor(r) + "\n\n" + bagian.join("\n\n");
 }
+function daftarHtml(teks) {
+  const baris = String(teks).split(/\n+/).map((s) => s.replace(/^\s*[-•*]\s*/, "").trim()).filter(Boolean);
+  const li = baris.map((s) => {
+    let h = esc(s);
+    h = h.replace(/^(Pertanyaan|Untuk [^:]{1,40}|Contoh jawaban|Contoh):/i, "<b>$1:</b>");
+    h = h.replace(/\s+(Jawaban|Masalah|Alasan|Contoh jawaban|Saran):/g, "<br><b>$1:</b>");
+    return `<li>${h}</li>`;
+  }).join("");
+  return `<ul>${li}</ul>`;
+}
+function cetakRapor(r) {
+  const menit = r.durasi_detik ? Math.ceil(r.durasi_detik / 60) + " menit" : "";
+  const bagian = LABEL.map(([k, l]) => (r.isi && r.isi[k]) ? `<h2>${l}</h2>${daftarHtml(r.isi[k])}` : "").join("")
+    || (r.ringkasan ? `<h2>Ringkasan</h2>${daftarHtml(r.ringkasan)}` : "");
+  $("cetakArea").innerHTML = `<div class="kop"><h1>Rapor Latihan Gladi Sidang</h1><p>${esc(tglRapor(r))}${menit ? " · " + esc(menit) : ""}${$("email").textContent ? " · " + esc($("email").textContent) : ""}</p></div>${bagian}<p class="kaki">Rapor latihan dari asisten AI, bukan penilaian resmi dosen penguji.</p>`;
+  const judulLama = document.title;
+  document.title = "Rapor Gladi Sidang " + new Date(r.created_at).toISOString().slice(0, 10);
+  window.print();
+  setTimeout(() => { document.title = judulLama; }, 1000);
+}
 async function muatRiwayat() {
   try {
     const j = await panggil("riwayat");
@@ -248,7 +285,7 @@ async function muatRiwayat() {
     $("hapusSemua").hidden = !riwayat.length;
     $("riwayat").innerHTML = riwayat.length ? riwayat.map((r) => {
       const menit = r.durasi_detik ? Math.ceil(r.durasi_detik / 60) + " menit" : "";
-      const bagian = LABEL.map(([k, l]) => (r.isi && r.isi[k]) ? `<h4>${l}</h4><p>${esc(r.isi[k])}</p>` : "").join("");
+      const bagian = LABEL.map(([k, l]) => (r.isi && r.isi[k]) ? `<h4>${l}</h4>${daftarHtml(r.isi[k])}` : "").join("");
       const isi = bagian || (r.ringkasan ? `<p>${esc(r.ringkasan)}</p>` : '<p class="kecil">Rangkuman tidak tersedia untuk sesi ini.</p>');
       return `<div class="rapor" data-id="${r.id}"><h3>${esc(tglRapor(r))}</h3><span class="kecil">${esc(menit)}</span>${isi}<div class="aksi"><button class="sekunder" data-aksi="salin">Salin</button><button class="sekunder" data-aksi="pdf">Simpan PDF</button><button class="sekunder" data-aksi="hapus">Hapus</button></div></div>`;
     }).join("") : '<p class="kecil">Belum ada riwayat. Rangkuman muncul setelah sesi pertama selesai.</p>';
@@ -263,7 +300,7 @@ $("riwayat").onclick = async (ev) => {
     try { await navigator.clipboard.writeText(teksRapor(r)); b.textContent = "Tersalin"; } catch (_) { b.textContent = "Gagal menyalin"; }
     setTimeout(() => { b.textContent = "Salin"; }, 1500);
   }
-  if (b.dataset.aksi === "pdf") { kartu.classList.add("cetak"); window.print(); kartu.classList.remove("cetak"); }
+  if (b.dataset.aksi === "pdf" && r) { cetakRapor(r); }
   if (b.dataset.aksi === "hapus" && confirm("Hapus rangkuman sesi ini?")) { await panggil("hapus_riwayat", { id: kartu.dataset.id }); muatRiwayat(); }
 };
 $("hapusSemua").onclick = async () => {
