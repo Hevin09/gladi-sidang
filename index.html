@@ -148,9 +148,12 @@ $("kirim").onclick = async () => {
   $("kirim").disabled = true;
   const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: false, emailRedirectTo: location.href.split("#")[0] } });
   $("kirim").disabled = false;
-  $("msg").textContent = error
-    ? "Email ini belum terdaftar sebagai pembeli, atau terlalu sering minta link. Coba lagi beberapa menit lagi."
-    : "Link masuk sudah dikirim. Cek email kamu (juga folder Spam/Promosi).";
+  const sering = error && (error.status === 429 || /rate|seconds|security purposes/i.test(error.message || ""));
+  $("msg").textContent = !error
+    ? "Link masuk sudah dikirim. Cek email kamu (juga folder Spam/Promosi)."
+    : sering
+      ? "Link masuk baru saja dikirim. Cek email kamu dulu (juga Spam/Promosi). Kalau belum ada, minta lagi beberapa menit lagi."
+      : "Email ini belum terdaftar sebagai pembeli. Pakai email yang sama seperti saat membeli.";
 };
 
 $("keluar").onclick = async (ev) => { ev.preventDefault(); if (conv) await conv.endSession(); await sb.auth.signOut(); };
